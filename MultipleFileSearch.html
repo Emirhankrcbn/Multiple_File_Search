@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dosya Analiz Uygulaması</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!--DOCX dosyaları için-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> <!--Excel dosyaları için-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>  <!--PDF dosyaları için-->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,7 +14,20 @@
             margin: 0 auto;
             padding: 20px;
             line-height: 1.6;
+            background-color: #2b579a;
         }
+
+        .logo-container {
+            position: absolute; /* Logo konumlandırma */
+            top: 20px; /* Üstten 20px boşluk */
+            left: 20px; /* Soldan 20px boşluk */
+        }
+
+        .logo {
+            width: 150px; /* Küçültülmüş boyut */
+            height: auto; /* Orantılı yükseklik */
+        }
+
         .container {
             background-color: #f5f5f5;
             padding: 20px;
@@ -98,9 +111,18 @@
         .xls-type { color: #217346; }
         .txt-type { color: #666; }
         .pdf-type { color: #d50000; }
+        .search-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
+    <div class="logo-container">
+        <img src="images/LogoWhite.png" alt="Site Logosu" class="logo">
+    </div>
+
     <div class="container">
         <h1>Dosya Analiz Uygulaması</h1>
         
@@ -118,297 +140,326 @@
                         <th>Dosya Adı</th>
                         <th>Tür</th>
                         <th>Yazar</th>
+                        <th>Sahip</th>
                         <th>Boyut</th>
                         <th>Oluşturulma Tarihi</th>
-                        <th>Son Değişiklik</th>
                     </tr>
                 </thead>
-                <tbody id="metaTableBody">
-                    <!-- Dosya bilgileri buraya eklenecek -->
-                </tbody>
+                <tbody id="metaTableBody"> </tbody>
             </table>
         </div>
         
         <div class="search-area">
             <h3>Aranacak Kelime</h3>
             <input type="text" id="searchTerm" placeholder="Aramak istediğiniz kelimeyi girin...">
-            <select id="searchType">
-                <option value="contains">İçeren</option>
-                <option value="startsWith">Başlayan</option>
-                <option value="endsWith">Biten</option>
-            </select>
-            <button id="searchButton">Ara</button>
+            <div class="search-buttons">
+                <button id="startsWithButton">Başlayan</button>
+                <button id="containsButton">İçeren</button>
+                <button id="endsWithButton">Biten</button>
+            </div>
         </div>
         
         <div id="results"></div>
     </div>
 
-    <script>
-        const fileInput = document.getElementById('fileInput');
-        const searchTerm = document.getElementById('searchTerm');
-        const searchType = document.getElementById('searchType');
-        const searchButton = document.getElementById('searchButton');
-        const resultsDiv = document.getElementById('results');
-        const metaTableBody = document.getElementById('metaTableBody');
-        const loadingStatus = document.getElementById('loadingStatus');
-        
-        let uploadedFiles = [];
-        
-        fileInput.addEventListener('change', async function(e) {
-            const files = Array.from(e.target.files);
-            if (files.length === 0) return;
-            
-            loadingStatus.textContent = `${files.length} dosya yükleniyor...`;
-            metaTableBody.innerHTML = '';
-            uploadedFiles = [];
-            
-            for (const file of files) {
-                try {
-                    const fileType = getFileType(file.name);
-                    const fileInfo = {
-                        name: file.name,
-                        type: fileType,
-                        size: formatFileSize(file.size),
-                        created: new Date(file.lastModified).toLocaleString(),
-                        modified: new Date(file.lastModified).toLocaleString(),
-                        file: file
-                    };
-                    
-                    // DOCX dosyaları için yazar bilgisini oku
-                    if (fileType === 'DOCX') {
-                        try {
-                            const metadata = await extractDocxMetadata(file);
-                            fileInfo.author = metadata.author || 'Belirtilmemiş';
-                            fileInfo.created = metadata.created || fileInfo.created;
-                        } catch (error) {
-                            console.error('DOCX meta veri okuma hatası:', error);
-                            fileInfo.author = 'Okunamadı';
-                        }
-                    } else if (fileType === 'PDF') {
-                        fileInfo.author = 'PDF Dosyası';
-                    } else {
-                        fileInfo.author = fileType === 'TXT' ? 'Metin Dosyası' : 'Excel Dosyası';
-                    }
-                    
-                    addFileToTable(fileInfo);
-                    uploadedFiles.push(fileInfo);
-                    
-                } catch (error) {
-                    console.error(`${file.name} işlenirken hata:`, error);
-                    addFileToTable({
-                        name: file.name,
-                        type: 'HATA',
-                        author: 'Okunamadı',
-                        size: formatFileSize(file.size),
-                        created: new Date(file.lastModified).toLocaleString(),
-                        modified: new Date(file.lastModified).toLocaleString()
-                    });
-                }
-            }
-            
-            loadingStatus.textContent = `${files.length} dosya başarıyla yüklendi.`;
-            resultsDiv.innerHTML = `<p>Dosyalar yüklendi. Aramak için bir kelime girin.</p>`;
-        });
-        
-        async function extractDocxMetadata(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                
-                reader.onload = async function(event) {
-                    try {
-                        const arrayBuffer = event.target.result;
-                        const zip = await JSZip.loadAsync(arrayBuffer);
-                        
-                        if (!zip.files['docProps/core.xml']) {
-                            resolve({});
-                            return;
-                        }
-                        
-                        const coreXml = await zip.file('docProps/core.xml').async('text');
-                        const parser = new DOMParser();
-                        const coreDoc = parser.parseFromString(coreXml, 'application/xml');
-                        
-                        const metadata = {
-                            author: getXmlValue(coreDoc, 'dc:creator'),
-                            created: formatDate(getXmlValue(coreDoc, 'dcterms:created'))
-                        };
-                        
-                        resolve(metadata);
-                    } catch (error) {
-                        reject(error);
-                    }
-                };
-                
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
-        
-        function getXmlValue(xmlDoc, tagName) {
-            const elements = xmlDoc.getElementsByTagName(tagName);
-            return elements.length > 0 ? elements[0].textContent : null;
-        }
-        
-        function formatDate(dateString) {
-            if (!dateString) return null;
+    <!--JavaScript kodu-->
+    <!-- ... HEAD bölümü aynen kalabilir, sadece SCRIPT'e geçiyoruz -->
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const searchTerm = document.getElementById('searchTerm');
+    const resultsDiv = document.getElementById('results');
+    const metaTableBody = document.getElementById('metaTableBody');
+    const loadingStatus = document.getElementById('loadingStatus');
+
+    let uploadedFiles = [];
+
+    fileInput.addEventListener('change', async function(e) {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        loadingStatus.textContent = `${files.length} dosya yükleniyor...`;
+        metaTableBody.innerHTML = '';
+        uploadedFiles = [];
+
+        for (const file of files) {
             try {
-                return new Date(dateString).toLocaleString();
-            } catch {
-                return null;
-            }
-        }
-        
-        function addFileToTable(fileInfo) {
-            const row = document.createElement('tr');
-            const typeClass = fileInfo.type === 'DOCX' ? 'docx-type' : 
-                             fileInfo.type === 'Excel' ? 'xls-type' : 
-                             fileInfo.type === 'TXT' ? 'txt-type' : 
-                             fileInfo.type === 'PDF' ? 'pdf-type' : '';
-            
-            row.innerHTML = `
-                <td>${fileInfo.name}</td>
-                <td><span class="file-type ${typeClass}">${fileInfo.type}</span></td>
-                <td>${fileInfo.author}</td>
-                <td>${fileInfo.size}</td>
-                <td>${fileInfo.created}</td>
-                <td>${fileInfo.modified}</td>
-            `;
-            
-            metaTableBody.appendChild(row);
-        }
-        
-        function getFileType(filename) {
-            if (filename.endsWith('.docx')) return 'DOCX';
-            if (filename.endsWith('.txt')) return 'TXT';
-            if (filename.endsWith('.xls') || filename.endsWith('.xlsx')) return 'Excel';
-            if (filename.endsWith('.pdf')) return 'PDF';
-            return 'Bilinmeyen';
-        }
-        
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Byte';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
-        // Arama fonksiyonları buraya gelecek
-        searchButton.addEventListener('click', async function() {
-            const term = searchTerm.value.trim();
-            const type = searchType.value;
-            if (!term) {
-                alert('Lütfen bir arama terimi girin.');
-                return;
-            }
-            
-            if (uploadedFiles.length === 0) {
-                alert('Lütfen önce dosyaları yükleyin.');
-                return;
-            }
-            
-            resultsDiv.innerHTML = ''; // Önceki sonuçları temizle
-            for (const fileInfo of uploadedFiles) {
-                let content = '';
-                if (fileInfo.type === 'DOCX') {
-                    content = await readDocxContent(fileInfo.file);
-                } else if (fileInfo.type === 'TXT') {
-                    content = await readTxtContent(fileInfo.file);
-                } else if (fileInfo.type === 'Excel') {
-                    content = await readExcelContent(fileInfo.file);
-                } else if (fileInfo.type === 'PDF') {
-                    content = await readPdfContent(fileInfo.file);
-                }
-
-                // Trim ve normalize et
-                const normalizedContent = content.trim().toLowerCase();
-                const normalizedTerm = term.trim().toLowerCase();
-
-                let match = false;
-                const words = normalizedContent.split(/\s+/); // Kelimeleri ayır
-
-                if (type === 'contains') {
-                    match = normalizedContent.includes(normalizedTerm);
-                } else if (type === 'startsWith') {
-                    match = words.some(word => word.startsWith(normalizedTerm));
-                } else if (type === 'endsWith') {
-                    match = words.some(word => word.endsWith(normalizedTerm));
-                }
-
-                if (match) {
-                    const resultItem = document.createElement('div');
-                    resultItem.className = 'result-item';
-                    resultItem.innerHTML = `<span class="highlight">${fileInfo.name}</span> dosyasında "${term}" kelimesi bulundu.`;
-                    resultsDiv.appendChild(resultItem);
-                }
-            }
-        });
-
-        // DOCX dosyasının içeriğini okuma
-        async function readDocxContent(file) {
-            const arrayBuffer = await file.arrayBuffer();
-            const zip = await JSZip.loadAsync(arrayBuffer);
-            const text = await zip.file(/word\/document\.xml/)[0].async("text");
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(text, "application/xml");
-            const paragraphs = xmlDoc.getElementsByTagName("w:p");
-            let content = '';
-            for (let p of paragraphs) {
-                const texts = p.getElementsByTagName("w:t");
-                for (let t of texts) {
-                    content += t.textContent + ' ';
-                }
-            }
-            return content.trim(); // Boşlukları temizle
-        }
-
-        // TXT dosyasının içeriğini okuma
-        async function readTxtContent(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    resolve(event.target.result.trim()); // Boşlukları temizle
+                const fileType = getFileType(file.name);
+                const fileInfo = {
+                    name: file.name,
+                    type: fileType,
+                    size: formatFileSize(file.size),
+                    created: new Date(file.lastModified).toLocaleString(),
+                    file: file
                 };
-                reader.onerror = reject;
-                reader.readAsText(file);
-            });
-        }
 
-        // XLS/XLSX dosyasının içeriğini okuma
-        async function readExcelContent(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const data = new Uint8Array(event.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    let content = '';
-                    workbook.SheetNames.forEach(sheetName => {
-                        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
-                        rows.forEach(row => {
-                            content += row.join(' ') + ' '; // Her satırı birleştir
-                        });
-                    });
-                    resolve(content.trim()); // Boşlukları temizle
-                };
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
+                // yazar bilgisi
+                if (fileType === 'DOCX') {
+                    try {
+                        const metadata = await extractDocxMetadata(file);
+                        fileInfo.author = metadata.author || 'Belirtilmemiş';
+                        fileInfo.created = metadata.created || fileInfo.created;
+                    } catch (error) {
+                        console.error('DOCX meta veri okuma hatası:', error);
+                        fileInfo.author = 'Okunamadı';
+                    }
+                } else if (fileType === 'PDF') {
+                    try {
+                        const metadata = await extractDocxMetadata(file);
+                        fileInfo.author = metadata.author || 'Belirtilmemiş';
+                        fileInfo.created = metadata.created || fileInfo.created;
+                    } catch (error) {
+                        console.error('PDF meta veri okuma hatası:', error);
+                        fileInfo.author = 'emirhan karaçoban';
+                    }
+                } else if (fileType === 'TXT') {
+                    try {
+                        const metadata = await extractDocxMetadata(file);
+                        fileInfo.author = metadata.author || 'Belirtilmemiş';
+                        fileInfo.created = metadata.created || fileInfo.created;
+                    } catch (error) {
+                        console.error('TXT meta veri okuma hatası:', error);
+                        fileInfo.author = 'emirhan karaçoban';
+                    }
+                } else { //excel
+                    try {
+                        const metadata = await extractDocxMetadata(file);
+                        fileInfo.author = metadata.author || 'Belirtilmemiş';
+                        fileInfo.created = metadata.created || fileInfo.created;
+                    } catch (error) {
+                        console.error('XLS/XLSX meta veri okuma hatası:', error);
+                        fileInfo.author = 'emirhan karaçoban';
+                    }
+                }
 
-        // PDF dosyasının içeriğini okuma
-        async function readPdfContent(file) {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let content = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
-                textContent.items.forEach(item => {
-                    content += item.str + ' ';
+                // sahip bilgisi
+                fileInfo.owner = 'emirhan';
+
+                addFileToTable(fileInfo);
+                uploadedFiles.push(fileInfo);
+
+            } catch (error) {
+                console.error(`${file.name} işlenirken hata:`, error);
+                addFileToTable({
+                    name: file.name,
+                    type: 'HATA',
+                    author: 'Okunamadı',
+                    owner: 'Bilinmiyor',
+                    size: formatFileSize(file.size),
+                    created: new Date(file.lastModified).toLocaleString(),
                 });
             }
-            return content.trim(); // Boşlukları temizle
         }
-    </script>
+
+        loadingStatus.textContent = `${files.length} dosya başarıyla yüklendi.`;
+        resultsDiv.innerHTML = `<p>Dosyalar yüklendi. Aramak için bir kelime girin.</p>`;
+    });
+
+    async function extractDocxMetadata(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = async function(event) {
+                try {
+                    const arrayBuffer = event.target.result;
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+
+                    if (!zip.files['docProps/core.xml']) {
+                        resolve({});
+                        return;
+                    }
+
+                    const coreXml = await zip.file('docProps/core.xml').async('text');
+                    const parser = new DOMParser();
+                    const coreDoc = parser.parseFromString(coreXml, 'application/xml');
+
+                    const metadata = {
+                        author: getXmlValue(coreDoc, 'dc:creator'),
+                        created: formatDate(getXmlValue(coreDoc, 'dcterms:created'))
+                    };
+
+                    resolve(metadata);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function getXmlValue(xmlDoc, tagName) {
+        const elements = xmlDoc.getElementsByTagName(tagName);
+        return elements.length > 0 ? elements[0].textContent : null;
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return null;
+        try {
+            return new Date(dateString).toLocaleString();
+        } catch {
+            return null;
+        }
+    }
+
+    function addFileToTable(fileInfo) {
+        const row = document.createElement('tr');
+        const typeClass = fileInfo.type === 'DOCX' ? 'docx-type' :
+                        fileInfo.type === 'Excel' ? 'xls-type' :
+                        fileInfo.type === 'TXT' ? 'txt-type' :
+                        fileInfo.type === 'PDF' ? 'pdf-type' : '';
+
+        row.innerHTML = `
+            <td>${fileInfo.name}</td>
+            <td><span class="file-type ${typeClass}">${fileInfo.type}</span></td>
+            <td>${fileInfo.author}</td>
+            <td>${fileInfo.owner}</td>
+            <td>${fileInfo.size}</td>
+            <td>${fileInfo.created}</td>
+        `;
+
+        metaTableBody.appendChild(row);
+    }
+
+    function getFileType(filename) {
+        if (filename.endsWith('.docx')) return 'DOCX';
+        if (filename.endsWith('.txt')) return 'TXT';
+        if (filename.endsWith('.xls') || filename.endsWith('.xlsx')) return 'Excel';
+        if (filename.endsWith('.pdf')) return 'PDF';
+        return 'Bilinmeyen';
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Byte';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Arama fonksiyonları
+    document.getElementById('containsButton').addEventListener('click', function () {
+        performSearch('contains');
+    });
+
+    document.getElementById('startsWithButton').addEventListener('click', function () {
+        performSearch('startsWith');
+    });
+
+    document.getElementById('endsWithButton').addEventListener('click', function () {
+        performSearch('endsWith');
+    });
+
+    async function performSearch(type) {
+        const term = searchTerm.value.trim();
+        if (!term) {
+            alert('Lütfen bir arama terimi girin.');
+            return;
+        }
+
+        if (uploadedFiles.length === 0) {
+            alert('Lütfen önce dosyaları yükleyin.');
+            return;
+        }
+
+        resultsDiv.innerHTML = '';
+        for (const fileInfo of uploadedFiles) {
+            let content = '';
+            if (fileInfo.type === 'DOCX') {
+                content = await readDocxContent(fileInfo.file);
+            } else if (fileInfo.type === 'TXT') {
+                content = await readTxtContent(fileInfo.file);
+            } else if (fileInfo.type === 'Excel') {
+                content = await readExcelContent(fileInfo.file);
+            } else if (fileInfo.type === 'PDF') {
+                content = await readPdfContent(fileInfo.file);
+            }
+
+            const normalizedContent = content.trim().toLowerCase();
+            const normalizedTerm = term.trim().toLowerCase();
+
+            let match = false;
+            const words = normalizedContent.split(/\s+/);
+
+            if (type === 'contains') {
+                match = normalizedContent.includes(normalizedTerm);
+            } else if (type === 'startsWith') {
+                match = words.some(word => word.startsWith(normalizedTerm));
+            } else if (type === 'endsWith') {
+                match = words.some(word => word.endsWith(normalizedTerm));
+            }
+
+            if (match) {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `<span class="highlight">${fileInfo.name}</span> dosyasında "${term}" kelimesi bulundu.`;
+                resultsDiv.appendChild(resultItem);
+            }
+        }
+    }
+
+    async function readDocxContent(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const text = await zip.file(/word\/document\.xml/)[0].async("text");
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, "application/xml");
+        const paragraphs = xmlDoc.getElementsByTagName("w:p");
+        let content = '';
+        for (let p of paragraphs) {
+            const texts = p.getElementsByTagName("w:t");
+            for (let t of texts) {
+                content += t.textContent + ' ';
+            }
+        }
+        return content.trim();
+    }
+
+    async function readTxtContent(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                resolve(event.target.result.trim());
+            };
+            reader.onerror = reject;
+            reader.readAsText(file);
+        });
+    }
+
+    async function readExcelContent(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                let content = '';
+                workbook.SheetNames.forEach(sheetName => {
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+                    rows.forEach(row => {
+                        content += row.join(' ') + ' ';
+                    });
+                });
+                resolve(content.trim());
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function readPdfContent(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let content = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            textContent.items.forEach(item => {
+                content += item.str + ' ';
+            });
+        }
+        return content.trim();
+    }
+</script>
+
 </body>
 </html>
