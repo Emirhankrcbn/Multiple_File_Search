@@ -18,14 +18,14 @@
         }
 
         .logo-container {
-            position: absolute; /* Logo konumlandırma */
-            top: 20px; /* Üstten 20px boşluk */
-            left: 20px; /* Soldan 20px boşluk */
+            position: absolute;
+            top: 20px;
+            left: 20px;
         }
 
         .logo {
-            width: 150px; /* Küçültülmüş boyut */
-            height: auto; /* Orantılı yükseklik */
+            width: 150px;
+            height: auto;
         }
 
         .container {
@@ -163,7 +163,6 @@
     </div>
 
     <!--JavaScript kodu-->
-    <!-- ... HEAD bölümü aynen kalabilir, sadece SCRIPT'e geçiyoruz -->
 <script>
     const fileInput = document.getElementById('fileInput');
     const searchTerm = document.getElementById('searchTerm');
@@ -192,47 +191,23 @@
                     file: file
                 };
 
-                // yazar bilgisi
+                // Yazar ve sahip bilgilerini dosya özelliklerinden al
                 if (fileType === 'DOCX') {
-                    try {
-                        const metadata = await extractDocxMetadata(file);
-                        fileInfo.author = metadata.author || 'Belirtilmemiş';
-                        fileInfo.created = metadata.created || fileInfo.created;
-                    } catch (error) {
-                        console.error('DOCX meta veri okuma hatası:', error);
-                        fileInfo.author = 'Okunamadı';
-                    }
+                    const metadata = await extractDocxMetadata(file);
+                    fileInfo.author = metadata.author || 'Belirtilmemiş';
+                    fileInfo.owner = metadata.owner || 'Belirtilmemiş';
                 } else if (fileType === 'PDF') {
-                    try {
-                        const metadata = await extractDocxMetadata(file);
-                        fileInfo.author = metadata.author || 'Belirtilmemiş';
-                        fileInfo.created = metadata.created || fileInfo.created;
-                    } catch (error) {
-                        console.error('PDF meta veri okuma hatası:', error);
-                        fileInfo.author = 'emirhan karaçoban';
-                    }
+                    const metadata = await extractPdfMetadata(file);
+                    fileInfo.author = metadata.author || 'Belirtilmemiş';
+                    fileInfo.owner = metadata.owner || 'Belirtilmemiş';
                 } else if (fileType === 'TXT') {
-                    try {
-                        const metadata = await extractDocxMetadata(file);
-                        fileInfo.author = metadata.author || 'Belirtilmemiş';
-                        fileInfo.created = metadata.created || fileInfo.created;
-                    } catch (error) {
-                        console.error('TXT meta veri okuma hatası:', error);
-                        fileInfo.author = 'emirhan karaçoban';
-                    }
-                } else { //excel
-                    try {
-                        const metadata = await extractDocxMetadata(file);
-                        fileInfo.author = metadata.author || 'Belirtilmemiş';
-                        fileInfo.created = metadata.created || fileInfo.created;
-                    } catch (error) {
-                        console.error('XLS/XLSX meta veri okuma hatası:', error);
-                        fileInfo.author = 'emirhan karaçoban';
-                    }
+                    fileInfo.author = 'Belirtilmemiş'; // TXT dosyalarında yazar bilgisi yok
+                    fileInfo.owner = 'Belirtilmemiş'; // TXT dosyalarında sahip bilgisi yok
+                } else { // Excel
+                    const metadata = await extractExcelMetadata(file);
+                    fileInfo.author = metadata.author || 'Belirtilmemiş';
+                    fileInfo.owner = metadata.owner || 'Belirtilmemiş';
                 }
-
-                // sahip bilgisi
-                fileInfo.owner = 'emirhan';
 
                 addFileToTable(fileInfo);
                 uploadedFiles.push(fileInfo);
@@ -274,10 +249,58 @@
 
                     const metadata = {
                         author: getXmlValue(coreDoc, 'dc:creator'),
+                        owner: 'Belirtilmemiş', // DOCX dosyalarında sahip bilgisi yok
                         created: formatDate(getXmlValue(coreDoc, 'dcterms:created'))
                     };
 
                     resolve(metadata);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function extractPdfMetadata(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = async function(event) {
+                try {
+                    const arrayBuffer = event.target.result;
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const metadata = await pdf.getMetadata();
+                    resolve({
+                        author: metadata.info.Author || 'Belirtilmemiş',
+                        owner: 'Belirtilmemiş', // PDF dosyalarında sahip bilgisi yok
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function extractExcelMetadata(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = async function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const author = firstSheet['!comments'] ? firstSheet['!comments'][0].author : 'Belirtilmemiş';
+                    resolve({
+                        author: author,
+                        owner: 'Belirtilmemiş', // Excel dosyalarında sahip bilgisi yok
+                    });
                 } catch (error) {
                     reject(error);
                 }
